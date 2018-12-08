@@ -1,0 +1,9 @@
+*
+
+!*.*
+
+*.o
+makefile
+Makefile
+nohup.out
+submit.sh
