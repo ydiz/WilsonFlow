@@ -10,11 +10,13 @@ void WF_init(int argc, char **argv, WilsonFlow_para &WF_para)
 {
   po::options_description desc("GFFA options");
   desc.add_options()("help", "help message")
-                    ("steps", po::value<int>(&WF_para.steps)->default_value(50), "")
-                    ("step_size", po::value<double>(&WF_para.step_size)->default_value(1.0), "parameter for smearing")
-                    ("adaptiveErrorTolerance", po::value<double>(&WF_para.adaptiveErrorTolerance)->default_value(2e-6), "Wilson flow integration steps for calculating topological charge")
-                    ("measure_interval", po::value<int>(&WF_para.measure_interval)->default_value(50), "Wilson flow integration steps for calculating topological charge")
-                    ("maxTau", po::value<double>(&WF_para.maxTau)->default_value(2.0), "parameter for smearing")
+                    // ("steps", po::value<int>(&WF_para.steps)->default_value(50), "")
+                    ("step_size", po::value<double>(&WF_para.step_size)->default_value(1.0), "")
+                    ("adaptiveErrorTolerance", po::value<double>(&WF_para.adaptiveErrorTolerance)->default_value(2e-6), "")
+                    ("StartTrajectory", po::value<int>(&WF_para.StartTrajectory)->default_value(0))
+                    ("EndTrajectory", po::value<int>(&WF_para.EndTrajectory)->default_value(0))
+                    ("TrajectoryInterval", po::value<int>(&WF_para.TrajectoryInterval)->default_value(1))
+                    ("outFile", po::value<std::string>(&WF_para.outFile)->default_value("topoCharge.txt"))
                     ;
 
   po::variables_map vm;

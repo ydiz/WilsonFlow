@@ -6,6 +6,17 @@
 namespace Grid {
 namespace QCD {
 
+class WilsonFlow_para {
+public:
+  double step_size;
+  double adaptiveErrorTolerance;
+
+  int StartTrajectory;
+  int EndTrajectory;
+  int TrajectoryInterval;
+  std::string outFile;
+};
+
 double maxNorm(const LatticeGaugeField& U) {
   Lattice<iVector<iScalar<iScalar<vRealD>>, Nd> > U_norm2(U._grid);
 
@@ -39,16 +50,6 @@ double maxNorm(const LatticeGaugeField& U) {
   return max_val;
 }
 
-
-class WilsonFlow_para {
-public:
-  int steps;
-  double step_size;
-  int measure_interval;
-  double maxTau;
-  double adaptiveErrorTolerance;
-};
-
 template <class Gimpl>
 class MyWilsonFlow {
     // unsigned int Nstep;
@@ -63,7 +64,7 @@ class MyWilsonFlow {
  public:
     INHERIT_GIMPL_TYPES(Gimpl)
 
-    explicit MyWilsonFlow(unsigned int Nstep, RealD epsilon, RealD _adaptiveErrorTolerance, unsigned int interval = 1):
+    explicit MyWilsonFlow(RealD epsilon, RealD _adaptiveErrorTolerance):
         epsilon(epsilon),
         adaptiveErrorTolerance(_adaptiveErrorTolerance),
         hasCompleted(false),

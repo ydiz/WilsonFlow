@@ -4,24 +4,16 @@ namespace Grid {
 namespace QCD {
 
 template<class T>
-void writeVector(const std::vector<T> &vec, const std::string &filename) {
-
-#ifdef GRID_COMMS_MPI3
-  int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+void writeVector(const std::vector<T> &vec, const std::string &filename, int rank) {
   if(rank == 0) {
-#endif
-
     std::ofstream outFile(filename, std::ofstream::app);
     for(const T& x : vec) outFile << x << " ";
     outFile << "\n";
     outFile.close();
-
-#ifdef GRID_COMMS_MPI3
   }
+#ifdef GRID_COMMS_MPI3
   MPI_Barrier(MPI_COMM_WORLD);
 #endif
-
 }
 
 
