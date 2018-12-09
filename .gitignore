@@ -2,8 +2,14 @@
 
 !*.*
 
+*.txt
 *.o
 makefile
 Makefile
 nohup.out
 submit.sh
+run.sh
+
+WF.ini
+
+ckpoint*

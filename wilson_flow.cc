@@ -1,4 +1,7 @@
+#include "Utils.h"
 #include "WilsonFlow.h"
+#include "parameters.h"
+#include "TopologicalCharge.h"
 
 using namespace std;
 using namespace Grid;
@@ -13,50 +16,27 @@ int main(int argc, char **argv) {
   GridLogLayout();
 
   GridCartesian *grid = SpaceTimeGrid::makeFourDimGrid(GridDefaultLatt(), GridDefaultSimd(Nd, vComplex::Nsimd()), GridDefaultMpi());
-
-  // LatticeComplex c(grid);
-  // c = 2.0;
-
-  // cout << norm2(c) << endl;
-
-  // GridParallelRNG           pRNG(grid);   pRNG.SeedFixedIntegers(std::vector<int>({45,12,81,9}));
-
   LatticeGaugeField U(grid);
-  U = 1.0;
+  std::string filename ("ckpoint_lat.1000");
+  readField(U, filename);
 
-  Lattice<iVector<iScalar<iScalar<vRealD>>, Nd> > U_norm2(grid);
+  WilsonFlow_para WF_para;
+  WF_init(argc, argv, WF_para);
 
-  parallel_for(int ss=0;ss<U_norm2._grid->oSites();ss++){
-    for(int mu=0; mu<Nd; mu++) {
-      U_norm2[ss](mu)()() = 0.;
-      for(int c1=0;c1<Nc;c1++)
-        for(int c2=0;c2<Nc;c2++)
-            U_norm2[ss](mu)()() += toReal(U[ss](mu)()(c1, c2) * U[ss](mu)()(c1, c2));
-    }
-  }
+  MyWilsonFlow<PeriodicGimplR> WF(WF_para.steps, WF_para.step_size, WF_para.adaptiveErrorTolerance, WF_para.measure_interval);
 
-  typedef typename decltype(U_norm2)::scalar_type scalar_type;
+  LatticeGaugeField Uflow(U._grid);
+  WF.smear_adaptive(Uflow, U);
 
-  // U_norm2[10](2)()() = 9.0;
+  // cout << WilsonLoops<PeriodicGimplR>::TopologicalCharge(U) << endl;
+  // // cout << topologicalCharge(U) << endl;
+  // std::vector<double> ret = timeSliceTopologicalCharge(U);
+  // cout << ret << endl;
+  //
+  // double sum=0;
+  // for(auto x: ret) sum += x;
+  // cout << sum << endl;
 
-  double max_val = 0.;
-  #pragma omp parallel for reduction(max : max_val)
-  for(int ss=0;ss<U_norm2._grid->oSites();ss++)
-  {
-    for(int mu=0; mu<Nd; mu++) {
-      scalar_type *sobj = (scalar_type *)& U_norm2[ss](mu)()();
-      for(int idx=0; idx<U_norm2._grid->Nsimd(); ++idx)
-        if( *(sobj + idx) > max_val)
-            max_val = *(sobj + idx);
-    }
-
-  }
-
-  #ifndef GRID_COMMS_NONE
-  MPI_Allreduce(MPI_IN_PLACE, &max_val, 1, MPI_DOUBLE, MPI_MAX, U_norm2.communicator)
-  #endif
-
-  cout << max_val << endl;
 
   Grid_finalize();
 
