@@ -10,13 +10,17 @@ void WF_init(int argc, char **argv, WilsonFlow_para &WF_para)
 {
   po::options_description desc("GFFA options");
   desc.add_options()("help", "help message")
-                    // ("steps", po::value<int>(&WF_para.steps)->default_value(50), "")
                     ("step_size", po::value<double>(&WF_para.step_size)->default_value(1.0), "")
                     ("adaptiveErrorTolerance", po::value<double>(&WF_para.adaptiveErrorTolerance)->default_value(2e-6), "")
                     ("StartTrajectory", po::value<int>(&WF_para.StartTrajectory)->default_value(0))
                     ("EndTrajectory", po::value<int>(&WF_para.EndTrajectory)->default_value(0))
                     ("TrajectoryInterval", po::value<int>(&WF_para.TrajectoryInterval)->default_value(1))
-                    ("outFile", po::value<std::string>(&WF_para.outFile)->default_value("topoCharge.txt"))
+                    ("inFilePrefix", po::value<std::string>(&WF_para.inFilePrefix)->default_value("ckpoint_lat"))
+                    ("doSmear", po::value<bool>(&WF_para.doSmear)->default_value(true))
+                    ("saveSmearField", po::value<bool>(&WF_para.saveSmearField)->default_value(false))
+                    ("smearFieldFilePrefix", po::value<std::string>(&WF_para.smearFieldFilePrefix)->default_value("ckpoint_lat_smear"))
+                    ("calculateTopoCharge", po::value<bool>(&WF_para.calculateTopoCharge)->default_value(true))
+                    ("topoChargeOutFile", po::value<std::string>(&WF_para.topoChargeOutFile)->default_value("topoCharge.txt"))
                     ;
 
   po::variables_map vm;

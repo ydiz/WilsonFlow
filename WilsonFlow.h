@@ -14,7 +14,14 @@ public:
   int StartTrajectory;
   int EndTrajectory;
   int TrajectoryInterval;
-  std::string outFile;
+  std::string inFilePrefix;
+
+  bool doSmear;
+  bool saveSmearField;
+  std::string smearFieldFilePrefix;
+
+  bool calculateTopoCharge;
+  std::string topoChargeOutFile;
 };
 
 double maxNorm(const LatticeGaugeField& U) {
