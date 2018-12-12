@@ -3,6 +3,19 @@
 namespace Grid {
 namespace QCD {
 
+std::vector<double> operator+(const std::vector<double> &x1, const std::vector<double> &x2) {
+  std::vector<double> ret(x1.size());
+  for(int i=0; i<ret.size(); ++i) ret[i] = x1[i] + x2[i];
+  return ret;
+}
+
+std::vector<double> operator*(double x, const std::vector<double> &vec) {
+  std::vector<double> ret(vec.size());
+  for(int i=0; i<ret.size(); ++i) ret[i] = x * vec[i];
+  return ret;
+}
+
+
 template<class T>
 void writeVector(const std::vector<T> &vec, const std::string &filename, int rank) {
   if(rank == 0) {

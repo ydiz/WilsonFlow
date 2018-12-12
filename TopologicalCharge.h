@@ -80,7 +80,6 @@ void fieldStrength(LatticeColourMatrix &FS, const LatticeGaugeField &Umu, int mu
     LatticeColourMatrix v = Vup - Vdn;
     // LatticeColourMatrix u = PeekIndex<LorentzIndex>(Umu, mu);  // some redundant copies
 
-    // LatticeColourMatrix u = ;
     LatticeColourMatrix U_mu = PeekIndex<LorentzIndex>(Umu, mu);
 
     LatticeColourMatrix u = U_mu;
@@ -94,18 +93,37 @@ void fieldStrength(LatticeColourMatrix &FS, const LatticeGaugeField &Umu, int mu
 
 
 
-std::vector<double> timeSliceTopologicalCharge(const LatticeGaugeField &U, int m=1, int n=1) {
+std::vector<double> timeSliceTopologicalCharge_mn(const LatticeGaugeField &U, int m=1, int n=1) {
   // Bx = -iF(y,z), By = -iF(z,y), Bz = -iF(x,y)
   LatticeColourMatrix Bx(U._grid), By(U._grid), Bz(U._grid);
   fieldStrength(Bx, U, Ydir, Zdir, m, n);
   fieldStrength(By, U, Zdir, Xdir, m, n);
   fieldStrength(Bz, U, Xdir, Ydir, m, n);
 
+  LatticeColourMatrix tmp(U._grid);
+  if(m!=n) {
+    fieldStrength(tmp, U, Ydir, Zdir, n, m);
+    Bx = (Bx + tmp) * 0.5;
+    fieldStrength(tmp, U, Zdir, Xdir, n, m);
+    By = (By + tmp) * 0.5;
+    fieldStrength(tmp, U, Xdir, Ydir, n, m);
+    Bz = (Bz + tmp) * 0.5;
+  }
+
   // Ex = -iF(t,x), Ey = -iF(t,y), Ez = -iF(t,z)
   LatticeColourMatrix Ex(U._grid), Ey(U._grid), Ez(U._grid);
   fieldStrength(Ex, U, Tdir, Xdir, m, n);
   fieldStrength(Ey, U, Tdir, Ydir, m, n);
   fieldStrength(Ez, U, Tdir, Zdir, m, n);
+
+  if(m!=n) {
+    fieldStrength(tmp, U, Tdir, Xdir, n, m);
+    Ex = (Ex + tmp) * 0.5;
+    fieldStrength(tmp, U, Tdir, Ydir, n, m);
+    Ey = (Ey + tmp) * 0.5;
+    fieldStrength(tmp, U, Tdir, Zdir, n, m);
+    Ez = (Ez + tmp) * 0.5;
+  }
 
   double coeff = 8.0/(32.0*M_PI*M_PI);
 
@@ -116,6 +134,27 @@ std::vector<double> timeSliceTopologicalCharge(const LatticeGaugeField &U, int m
   std::vector<double> ret(slice_sum.size());
   for(int i=0; i<slice_sum.size(); ++i) ret[i] = TensorRemove(slice_sum[i]).real();
   return ret;
+}
+
+std::vector<double> timeSliceTopologicalCharge(const LatticeGaugeField &U) {
+  double c1, c2, c3, c4, c5;
+
+  c5 = 1.0 / 20.;
+  c1 = (19. - 55. * c5) / 9.;
+  c2 = (1. - 64. * c5) / 9.;
+  c3 = (- 64. + 640. * c5) / 45.;
+  c4 = 1./5. - 2 * c5;
+
+  std::vector<double> ret(U._grid->_fdimensions[Tdir], 0);
+  ret = c1 * timeSliceTopologicalCharge_mn(U, 1, 1) + c2 * timeSliceTopologicalCharge_mn(U, 2, 2)
+        + c3 * timeSliceTopologicalCharge_mn(U, 1, 2) + c4 * timeSliceTopologicalCharge_mn(U, 1, 3)
+        + c5 * timeSliceTopologicalCharge_mn(U, 3, 3);
+  // ret += c3 * timeSliceTopologicalCharge_mn(U, 1, 2) + ;
+  // ret += c4 * timeSliceTopologicalCharge_mn(U, 1, 3);
+  // ret += c5 * timeSliceTopologicalCharge_mn(U, 3, 3);
+
+  return ret;
+
 }
 
 // double globalTopologicalCharge(const LatticeGaugeField &U){
