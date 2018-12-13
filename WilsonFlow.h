@@ -8,8 +8,10 @@ namespace QCD {
 
 class WilsonFlow_para {
 public:
+  std::vector<int> lat;
   double step_size;
   double adaptiveErrorTolerance;
+  int Nstep;
 
   int StartTrajectory;
   int EndTrajectory;
@@ -24,68 +26,76 @@ public:
   std::string topoChargeOutFile;
 };
 
-double maxNorm(const LatticeGaugeField& U) {
-  Lattice<iVector<iScalar<iScalar<vRealD>>, Nd> > U_norm2(U._grid);
-
-  parallel_for(int ss=0;ss<U_norm2._grid->oSites();ss++){
-    for(int mu=0; mu<Nd; mu++) {
-      U_norm2[ss](mu)()() = 0.;
-      for(int c1=0;c1<Nc;c1++)
-        for(int c2=0;c2<Nc;c2++)
-            U_norm2[ss](mu)()() += toReal(U[ss](mu)()(c1, c2) * U[ss](mu)()(c1, c2));
-    }
-  }
-
-  typedef typename decltype(U_norm2)::scalar_type scalar_type;
-
-  double max_val = 0.;
-  #pragma omp parallel for reduction(max : max_val)
-  for(int ss=0;ss<U_norm2._grid->oSites();ss++)
-  {
-    for(int mu=0; mu<Nd; mu++) {
-      scalar_type *sobj = (scalar_type *)& U_norm2[ss](mu)()();
-      for(int idx=0; idx<U_norm2._grid->Nsimd(); ++idx)
-        if( *(sobj + idx) > max_val)
-            max_val = *(sobj + idx);
-    }
-  }
-
-  #ifndef GRID_COMMS_NONE
-  MPI_Allreduce(MPI_IN_PLACE, &max_val, 1, MPI_DOUBLE, MPI_MAX, U_norm2._grid->communicator);
-  #endif
-
-  return max_val;
-}
 
 template <class Gimpl>
 class MyWilsonFlow {
-    // unsigned int Nstep;
-    // unsigned int measure_interval;
-    mutable RealD epsilon, taus, adaptiveErrorTolerance; // the taus printed out is flow time after this step
+
+    mutable RealD initial_epsilon, epsilon, taus, adaptiveErrorTolerance; // the taus printed out is flow time after this step
+    int Nstep;
     bool hasCompleted = false; // for adaptive
 
     mutable WilsonGaugeAction<Gimpl> SG;
 
     void evolve_step_adaptive(typename Gimpl::GaugeField&, RealD&);
+    void evolve_step(typename Gimpl::GaugeField&) const;
 
  public:
     INHERIT_GIMPL_TYPES(Gimpl)
 
-    explicit MyWilsonFlow(RealD epsilon, RealD _adaptiveErrorTolerance):
-        epsilon(epsilon),
+    explicit MyWilsonFlow(RealD _epsilon, RealD _adaptiveErrorTolerance, int _Nstep=0):
+        initial_epsilon(_epsilon),
+        epsilon(_epsilon),
         adaptiveErrorTolerance(_adaptiveErrorTolerance),
+        Nstep(_Nstep),
         hasCompleted(false),
         SG(WilsonGaugeAction<Gimpl>(3.0)) { // WilsonGaugeAction with beta 3.0
             assert(epsilon > 0.0);
     }
 
+    void smear(GaugeField& out, const GaugeField& in) const;
     void smear_adaptive(GaugeField&, const GaugeField&);
-    RealD energyDensityPlaquette(const GaugeField& U) const;
+    // RealD energyDensityPlaquette(const GaugeField& U) const;
 };
+
+template <class Gimpl>
+void MyWilsonFlow<Gimpl>::evolve_step(typename Gimpl::GaugeField &U) const{
+    GaugeField Z(U._grid);
+    GaugeField tmp(U._grid);
+    SG.deriv(U, Z);
+    Z *= 0.25;                                  // Z0 = 1/4 * F(U)
+    Gimpl::update_field(Z, U, -2.0*epsilon);    // U = W1 = exp(ep*Z0)*W0
+
+    Z *= -17.0/8.0;
+    SG.deriv(U, tmp); Z += tmp;                 // -17/32*Z0 +Z1
+    Z *= 8.0/9.0;                               // Z = -17/36*Z0 +8/9*Z1
+    Gimpl::update_field(Z, U, -2.0*epsilon);    // U_= W2 = exp(ep*Z)*W1
+
+    Z *= -4.0/3.0;
+    SG.deriv(U, tmp); Z += tmp;                 // 4/3*(17/36*Z0 -8/9*Z1) +Z2
+    Z *= 3.0/4.0;                               // Z = 17/36*Z0 -8/9*Z1 +3/4*Z2
+    Gimpl::update_field(Z, U, -2.0*epsilon);    // V(t+e) = exp(ep*Z)*W2
+}
+
+template <class Gimpl>
+void MyWilsonFlow<Gimpl>::smear(GaugeField& out, const GaugeField& in) const {
+    out = in;
+    double tau, energy_density;
+    std::cout << GridLogMessage << "[WilsonFlow] step: "
+              << 0 << "; tau: " << 0 << "; E: " << energyDensity(in) << std::endl;
+    for (unsigned int step = 1; step <= Nstep; step++) {
+        evolve_step(out);
+        tau = step * epsilon;
+        energy_density = energyDensity(out);
+        std::cout << GridLogMessage << "[WilsonFlow] step: "
+                  << step << "; tau: " << tau << "; E: "
+                  << energy_density << "; t^2 E: " << tau * tau * energy_density << std::endl;
+        std::cout << timeSliceTopologicalCharge(out) << std::endl;
+    }
+}
 
 
 template <class Gimpl>
-void MyWilsonFlow<Gimpl>::evolve_step_adaptive(typename Gimpl::GaugeField &U, double &tSqauredAveE) {
+void MyWilsonFlow<Gimpl>::evolve_step_adaptive(typename Gimpl::GaugeField &U, double &tSqauredE) {
 
     static int step = 0;
     step++;
@@ -112,59 +122,72 @@ void MyWilsonFlow<Gimpl>::evolve_step_adaptive(typename Gimpl::GaugeField &U, do
     Gimpl::update_field(Z, U, -2.0*epsilon);    // V(t+e) = exp(ep*Z)*W2
 
 
-    double new_tSqauredAveE = energyDensityPlaquette(U); // t^2 * <E>
-    std::cout << GridLogMessage << "[WilsonFlow] Energy density (plaq) : "
-              << step << "  " << taus << "  " << new_tSqauredAveE << std::endl;
+    // double new_tSqauredE = energyDensityPlaquette(U); // t^2 * <E>
+    double energy_density = energyDensity(U);
+    double new_tSqauredE = taus * taus * energy_density;
+    // std::cout << GridLogMessage << "[WilsonFlow] Energy density (plaq) : "
+    //           << step << "  " << taus << "  " << new_tSqauredE << "  "
+    //           << taus * taus * new_tSqauredE << std::endl;
+    std::cout << GridLogMessage << "[WilsonFlow] step: "
+              << step << "; tau: " << taus << "; E: "
+              << energy_density << "; t^2 E: " << new_tSqauredE << std::endl;
 
     if(hasCompleted) return; // if hasCompleted, only update U
-    if(new_tSqauredAveE > 0.3) { // if tSqauredAveE > 0.3, go back and use linear interpolation
+    if(new_tSqauredE > 0.3) { // if tSqauredE > 0.3, go back and use linear interpolation
       U = U0;
       taus = taus - epsilon;
-      epsilon = epsilon * (0.3 - tSqauredAveE) / (new_tSqauredAveE - tSqauredAveE);
+      epsilon = epsilon * (0.3 - tSqauredE) / (new_tSqauredE - tSqauredE);
       taus = taus + epsilon;
       hasCompleted = true;
-      evolve_step_adaptive(U, tSqauredAveE);
+      evolve_step_adaptive(U, tSqauredE);
       step = 0; // reset step to 0 for the next smear_adaptive();
       return;
     }
 
-    tSqauredAveE = new_tSqauredAveE;
+    tSqauredE = new_tSqauredE;
     // calculate new step size
     Gimpl::update_field(Zprime, Uprime, -2.0*epsilon); // V'(t+e) = exp(ep*Z')*W0
     GaugeField diffU = U - Uprime;
     RealD diff = 1.0 / 9.0 * std::sqrt(maxNorm(diffU)); // d = 1/N^2 max_{x,mu} \sqrt( || U - Uprime || )
+
+
     // if d > δ the integration step is repeated; taus is unchanged.
-    if(diff < adaptiveErrorTolerance) taus += epsilon;
+    double new_epsilon;
+    new_epsilon = epsilon * 0.95 * std::pow(adaptiveErrorTolerance/diff,1./3.);
+    if(diff < adaptiveErrorTolerance) taus += new_epsilon; // taus is flow time after next step
     else {
+      taus -= epsilon;
       U = U0;
+      taus += new_epsilon;
     }
-    // std::cout << GridLogMessage << "Adjusting integration step with distance: " << diff << std::endl;
+
     // adjust integration step
-    epsilon = epsilon * 0.95 * std::pow(adaptiveErrorTolerance/diff,1./3.);
+    // epsilon = epsilon * 0.95 * std::pow(adaptiveErrorTolerance/diff,1./3.);
+    epsilon = new_epsilon;
 }
 
-template <class Gimpl>
-RealD MyWilsonFlow<Gimpl>::energyDensityPlaquette(const GaugeField& U) const {
-    return 2.0 * taus * taus * SG.S(U)/U._grid->gSites();
-}
+// template <class Gimpl>
+// RealD MyWilsonFlow<Gimpl>::energyDensityPlaquette(const GaugeField& U) const {
+//     return 2.0 * taus * taus * SG.S(U)/U._grid->gSites();
+// }
 
 
 template <class Gimpl>
 void MyWilsonFlow<Gimpl>::smear_adaptive(GaugeField& out, const GaugeField& in){
     out = in;
-    taus = epsilon; // initial taus is flow time after first step
-    // taus = 0; //zyd: I changed this to: initial taus = 0;
-    // unsigned int step = 0;
-    hasCompleted = false;
-    double tSqauredAveE = 0.;
-    do{
-        // step++;
-        //std::cout << GridLogMessage << "Evolution time :"<< taus << std::endl;
-        evolve_step_adaptive(out, tSqauredAveE);
+    epsilon = initial_epsilon;
 
+    std::cout << GridLogMessage << "[WilsonFlow] step: "  << 0
+              << "; tau: " << 0 << "; E: " << energyDensity(in) << std::endl;
+
+    taus = epsilon; // initial taus is flow time after first step
+    // taus = 0;
+    hasCompleted = false;
+    double tSqauredE = 0.;
+
+    do{
+        evolve_step_adaptive(out, tSqauredE);
         if(hasCompleted) break;
-        //   std::cout << GridLogMessage << "[WilsonFlow] Energy density (plaq) : "
-  		  // << step << "  " << taus << "  " << energyDensityPlaquette(out) << std::endl;
     } while(true);
 }
 

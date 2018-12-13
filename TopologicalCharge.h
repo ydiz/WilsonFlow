@@ -1,10 +1,6 @@
 namespace Grid {
 namespace QCD {
 
-// fieldStrength -> fieldStrength
-
-//FIXME: specify Gimpl
-
 void stapleUpper(LatticeColourMatrix &staple, const LatticeGaugeField &Umu, int mu, int nu, int m=1, int n = 1) {
   assert(nu != mu);
 
@@ -88,6 +84,9 @@ void fieldStrength(LatticeColourMatrix &FS, const LatticeGaugeField &Umu, int mu
     LatticeColourMatrix vu = v*u;
     //FS = 0.25*Ta(u*v + Cshift(vu, mu, -1));
     FS = (u*v + Cshift(vu, mu, -m)); //FS = (u*v + Cshift(vu, mu, -1));
+    // LatticeColourMatrix tmp1 = adj(Vup * u);
+    // LatticeColourMatrix tmp2 = Vdn * u;
+    // FS = adj(u * Vup) - u * Vdn + Cshift(tmp1, mu, -m) - Cshift(tmp2, mu, -m);
     FS = 0.125*(FS - adj(FS));
 }
 
@@ -125,7 +124,7 @@ std::vector<double> timeSliceTopologicalCharge_mn(const LatticeGaugeField &U, in
     Ez = (Ez + tmp) * 0.5;
   }
 
-  double coeff = 8.0/(32.0*M_PI*M_PI);
+  double coeff = 8.0/(32.0*M_PI*M_PI) / m / m / n / n;
 
   LatticeComplex qfield = coeff*trace(Bx*Ex + By*Ey + Bz*Ez);
 
@@ -133,6 +132,8 @@ std::vector<double> timeSliceTopologicalCharge_mn(const LatticeGaugeField &U, in
   sliceSum(qfield, slice_sum, Tdir);
   std::vector<double> ret(slice_sum.size());
   for(int i=0; i<slice_sum.size(); ++i) ret[i] = TensorRemove(slice_sum[i]).real();
+
+  // std::cout << m << ", " << n << ": " << ret << std::endl;
   return ret;
 }
 
@@ -157,6 +158,31 @@ std::vector<double> timeSliceTopologicalCharge(const LatticeGaugeField &U) {
 
 }
 
+std::vector<double> timeSliceTopologicalCharge_1Li(const LatticeGaugeField &U) {
+
+  std::vector<double> ret(U._grid->_fdimensions[Tdir], 0);
+  ret = timeSliceTopologicalCharge_mn(U, 1, 1);
+
+  return ret;
+
+}
+
+double globalTopologicalCharge_1Li(const LatticeGaugeField &U){
+  std::vector<double> timeSliceTC;
+  timeSliceTC = timeSliceTopologicalCharge_1Li(U);
+  double ret = 0;
+  for(double x: timeSliceTC) ret += x;
+  return ret;
+}
+
+double globalTopologicalCharge(const LatticeGaugeField &U){
+  std::vector<double> timeSliceTC;
+  timeSliceTC = timeSliceTopologicalCharge(U);
+  double ret = 0;
+  for(double x: timeSliceTC) ret += x;
+  return ret;
+}
+
 // double globalTopologicalCharge(const LatticeGaugeField &U){
 //     // Bx = -iF(y,z), By = -iF(z,y), Bz = -iF(x,y)
 //     LatticeColourMatrix Bx(U._grid), By(U._grid), Bz(U._grid);
@@ -176,6 +202,76 @@ std::vector<double> timeSliceTopologicalCharge(const LatticeGaugeField &U) {
 //     auto Tq = sum(qfield);
 //     return TensorRemove(Tq).real();
 // }
+
+double energyDensity_mn(const LatticeGaugeField &U, int m=1, int n=1) {
+  // Bx = -iF(y,z), By = -iF(z,y), Bz = -iF(x,y)
+  LatticeColourMatrix Bx(U._grid), By(U._grid), Bz(U._grid);
+  fieldStrength(Bx, U, Ydir, Zdir, m, n);
+  fieldStrength(By, U, Zdir, Xdir, m, n);
+  fieldStrength(Bz, U, Xdir, Ydir, m, n);
+
+  LatticeColourMatrix tmp(U._grid);
+  if(m!=n) {
+    fieldStrength(tmp, U, Ydir, Zdir, n, m);
+    Bx = (Bx + tmp) * 0.5;
+    fieldStrength(tmp, U, Zdir, Xdir, n, m);
+    By = (By + tmp) * 0.5;
+    fieldStrength(tmp, U, Xdir, Ydir, n, m);
+    Bz = (Bz + tmp) * 0.5;
+  }
+
+  // Ex = -iF(t,x), Ey = -iF(t,y), Ez = -iF(t,z)
+  LatticeColourMatrix Ex(U._grid), Ey(U._grid), Ez(U._grid);
+  fieldStrength(Ex, U, Tdir, Xdir, m, n);
+  fieldStrength(Ey, U, Tdir, Ydir, m, n);
+  fieldStrength(Ez, U, Tdir, Zdir, m, n);
+
+  if(m!=n) {
+    fieldStrength(tmp, U, Tdir, Xdir, n, m);
+    Ex = (Ex + tmp) * 0.5;
+    fieldStrength(tmp, U, Tdir, Ydir, n, m);
+    Ey = (Ey + tmp) * 0.5;
+    fieldStrength(tmp, U, Tdir, Zdir, n, m);
+    Ez = (Ez + tmp) * 0.5;
+  }
+
+  // double coeff = 8.0/(32.0*M_PI*M_PI);
+  // LatticeComplex qfield = coeff*trace(Bx*Ex + By*Ey + Bz*Ez);
+  double coeff = 2.0 / 2.0;
+
+  LatticeComplex qfield = coeff*trace(Bx*Bx + By*By + Bz*Bz + Ex*Ex + Ey*Ey + Ez*Ez);
+
+  // std::vector<typename LatticeComplex::vector_object::scalar_object> slice_sum;
+  // sliceSum(qfield, slice_sum, Tdir);
+  // std::vector<double> ret(slice_sum.size());
+  // for(int i=0; i<slice_sum.size(); ++i) ret[i] = TensorRemove(slice_sum[i]).real();
+  std::complex<double> ttt = sum(qfield)()()() / double(U._grid->gSites());
+  // std::cout << ttt << std::endl;
+  double ret = ttt.real();
+  // double ret = TensorRemove(tmp).real();
+  return ret;
+}
+
+double energyDensity(const LatticeGaugeField &U) {
+  // double c1, c2, c3, c4, c5;
+  //
+  // c5 = 1.0 / 20.;
+  // c1 = (19. - 55. * c5) / 9.;
+  // c2 = (1. - 64. * c5) / 9.;
+  // c3 = (- 64. + 640. * c5) / 45.;
+  // c4 = 1./5. - 2 * c5;
+  //
+  // std::vector<double> ret(U._grid->_fdimensions[Tdir], 0);
+  // ret = c1 * energyDensity_mn(U, 1, 1) + c2 * energyDensity_mn(U, 2, 2)
+  //       + c3 * energyDensity_mn(U, 1, 2) + c4 * energyDensity_mn(U, 1, 3)
+  //       + c5 * energyDensity_mn(U, 3, 3);
+  double ret;
+  ret = - energyDensity_mn(U, 1, 1); //FIXME: do not know why multipying by -1 is necessary
+
+  return ret;
+
+}
+
 
 }
 }
